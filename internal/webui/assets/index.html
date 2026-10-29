@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#101319">
+  <title>SessionTradeExecuter | 売買管理</title>
+  <link rel="stylesheet" href="/style.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <!--
+  [コンポーネント概要]
+  .app-header は売買管理と全般設定の移動、および管理画面の通信状態を表示します。
+  #dashboard-page は全5商品の保存済みモード、現在の運転、担当建玉と損益を表示します。
+  商品の .mode-picker はOFF・DryRun・ONを選択し、保存成功後に選択状態を更新します。
+  ONの実取引開始だけは商品内で確認します。OFFは建玉を決済せず管理対象から外します。
+  #settings-page は全般設定を編集します。未保存値は状態の定期取得で上書きしません。
+  #settings-status は保存状態、#settings-conflict は別操作による設定変更を表示します。
+  #session-pl-page は保存された終了セッションの確定損益を商品・モードで絞り込みます。
+  #session-pl-error は読取失敗を、#report-save-alert は保存処理の失敗を表示します。
+  機能: 商品別運転と永続設定をREST APIで管理します。
+  引数: /api/state・/api/settings・/api/rules・/api/session-pl のJSON応答。
+  返り値: なし。保存操作を商品別APIまたは設定APIへ送信します。
+  -->
+  <header class="app-header">
+    <a class="brand" href="#dashboard" aria-label="SessionTradeExecuter 売買管理"><span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span><span>SessionTradeExecuter<span class="brand-sub">運転管理</span></span></a>
+    <nav class="page-nav" aria-label="メインメニュー"><a id="nav-dashboard" href="#dashboard" aria-current="page">売買管理</a><a id="nav-session-pl" href="#session-pl">セッション損益</a><a id="nav-settings" href="#settings">全般設定</a></nav>
+    <span class="connection"><span id="connection-dot" class="status-dot"></span><span id="connection-message">接続中…</span></span>
+  </header>
+  <main class="main">
+    <div id="connection-alert" class="alert" role="alert" hidden></div>
+    <div id="settings-load-alert" class="alert" role="alert" hidden></div>
+    <div id="report-save-alert" class="alert" role="alert" hidden></div>
+    <div id="restart-alert" class="notice" hidden>管理画面のホスト・ポートの変更を保存しました。この変更はアプリの再起動後に反映されます。</div>
+    <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+    <div id="dashboard-page">
+      <section class="page-heading" aria-labelledby="page-title"><div><p class="eyebrow">取引コントロール</p><h1 id="page-title">売買管理</h1><p class="page-description">商品ごとに運転モードを切り替え、歯車から数量と昼夜の手法を設定します。</p></div><div class="clock-block"><span>最終取得 / 日本時間</span><time id="last-updated">—</time></div></section>
+      <section id="summary" class="summary" aria-label="今回の運転状況">
+        <div class="summary-cell"><span class="metric-label">運転モードの設定</span><div class="mode-summary"><strong id="live-total">—</strong><span>実取引</span><strong id="dryrun-total">—</strong><span>仮想</span></div></div>
+        <div class="summary-cell"><span class="metric-label">当運転の保有 <span class="metric-note">実・仮想合計</span></span><div><strong id="holding-total">—</strong><span class="metric-unit"> 枚</span></div></div>
+        <div class="summary-cell"><span class="metric-label">実取引の確定損益 <span class="metric-note">当セッション</span></span><div><strong id="realized-live">—</strong><span class="metric-unit"> 円</span></div></div>
+        <div class="summary-cell"><span class="metric-label">仮想売買の確定損益 <span class="metric-note">当セッション</span></span><div><strong id="realized-dryrun">—</strong><span class="metric-unit"> 円</span></div></div>
+      </section>
+      <div id="markets" class="markets" aria-label="商品別の運転">
+        <section class="market-group" aria-labelledby="nikkei-heading"><div class="group-heading"><h2 id="nikkei-heading">日経225<span>3 商品</span></h2><p>ラージ・ミニ・マイクロ</p></div><div id="nikkei-cards" class="cards"></div></section>
+        <section class="market-group" aria-labelledby="topix-heading"><div class="group-heading"><h2 id="topix-heading">TOPIX<span>2 商品</span></h2><p>ラージ・ミニ</p></div><div id="topix-cards" class="cards"></div></section>
+      </div>
+      <footer class="footer"><p><span class="footer-dot" aria-hidden="true"></span>OFFは決済せず、保有玉を管理対象から外します。残った実建玉は手動で管理してください。</p><p>DryRunは仮想売買、ONは実取引です。数量・手法はOFFにしてから変更できます。</p><p>接続先 <span id="controller-url">—</span></p></footer>
+    </div>
+    <div id="session-pl-page" hidden>
+      <!--
+      [コンポーネント概要]
+      #session-pl-product と #session-pl-mode は取得済み行を商品・実仮想で絞り込みます。
+      #session-pl-refresh は手動でCSV読取APIを呼び、表示中は5秒間隔でも更新します。
+      #session-pl-table は利益・損失を正額、収支を符号付きで表示します。空一覧は #session-pl-empty へ切り替えます。
+      読取失敗時は前回一覧を保持し、エラーと最終成功取得時刻を表示します。
+      機能: 保存済みの終了セッションを確認します。
+      引数: /api/session-pl のJSON {rows:[session,product,mode,profit,loss,net,entry_qty]}。
+      返り値: なし。売買操作や損益記録の復元は行いません。
+      -->
+      <section class="page-heading" aria-labelledby="session-pl-title"><div><p class="eyebrow">保存済みの取引結果</p><h1 id="session-pl-title">セッション損益</h1><p class="page-description">終了したセッションの確定損益です。金額は手数料を含みません。</p></div><div class="clock-block"><span>最終取得 / 日本時間</span><time id="session-pl-updated">—</time></div></section>
+      <div class="session-pl-toolbar">
+        <div class="session-pl-filters"><label for="session-pl-product">商品<select id="session-pl-product"><option value="">すべての商品</option></select></label><label for="session-pl-mode">モード<select id="session-pl-mode"><option value="">すべてのモード</option><option value="live">ON・実取引</option><option value="dryrun">DryRun・仮想売買</option></select></label></div>
+        <button id="session-pl-refresh" class="button secondary" type="button">更新</button>
+      </div>
+      <div id="session-pl-error" class="alert" role="alert" hidden></div>
+      <p id="session-pl-status" class="session-pl-status" role="status" aria-live="polite">損益を取得しています…</p>
+      <div id="session-pl-empty" class="session-pl-empty" hidden><strong id="session-pl-empty-title">セッション損益の記録はまだありません</strong><p id="session-pl-empty-description">セッション終了後に記録が保存されると表示されます。</p></div>
+      <div id="session-pl-table-wrap" class="session-pl-table-wrap" role="region" aria-label="セッション損益一覧・横スクロール可能" tabindex="0" hidden>
+        <table id="session-pl-table"><caption class="screen-reader">セッション別・商品別・モード別の確定損益。損失列も正の金額で表示します。</caption><thead><tr><th scope="col">セッション</th><th scope="col">商品</th><th scope="col">モード</th><th scope="col" class="amount">利益 <span>円</span></th><th scope="col" class="amount">損失 <span>円</span></th><th scope="col" class="amount">収支 <span>円</span></th><th scope="col" class="amount">新規合計枚数</th></tr></thead><tbody id="session-pl-rows"></tbody></table>
+      </div>
+      <p class="session-pl-note">損失は正額で表示し、収支は利益−損失です。新規合計枚数は、そのセッションで新しく建てた枚数の合計です。</p>
+    </div>
+    <div id="settings-page" hidden>
+      <section class="page-heading" aria-labelledby="settings-title"><div><p class="eyebrow">共通の運転条件</p><h1 id="settings-title">全般設定</h1><p class="page-description">開始時刻、接続先、監視間隔を設定します。米国・ロンドンの時刻は冬の日本時間が基準です。</p></div><a class="text-link" href="#dashboard">売買管理へ戻る <span aria-hidden="true">↗</span></a></section>
+      <div id="settings-conflict" class="notice" hidden>編集中に保存済みの設定が変更されました。入力を控えてから「保存済みに戻す」で最新設定を読み込んでください。</div>
+      <div id="settings-lock" class="notice" hidden></div>
+      <form id="global-form"><fieldset id="global-fields" class="plain-fieldset" disabled><div id="global-groups" class="settings-groups"></div></fieldset><div id="global-error" class="alert" role="alert" hidden></div><div class="save-bar"><div><span id="settings-status" class="save-status">設定を取得しています…</span><p id="settings-save-note">保存内容は次回起動にも引き継がれます。</p></div><div class="save-actions"><button id="global-reset" class="button secondary" type="button" disabled>保存済みに戻す</button><button id="global-save" class="button primary" type="submit" disabled>変更を保存</button></div></div></form>
+    </div>
+  </main>
+  <!--
+  [コンポーネント概要]
+  #product-dialog は商品別の片方向上限と時間帯別の手法を編集するモーダルです。
+  #product-windows は日本時間又は米国開始相対の開始・終了と手法を編集する一覧です。
+  #product-window-add は新しい時間帯を追加します。枠の間は静観し、重複はAPIで拒否します。
+  #product-current は保存済みの値、各入力欄は編集中の値を表示します。
+  手法候補は /api/rules で読み込み、昼夜の適合性と実行対応状態で選択を制限します。
+  保存中はフォームを無効化します。失敗時は入力を保持し、理由を表示します。
+  機能: 商品設定の確認・編集・永続保存を行います。
+  引数: 商品ID、設定JSON、手法候補JSON。
+  返り値: なし。商品設定APIへ保存要求を送信します。
+  -->
+  <dialog id="product-dialog" class="product-dialog" aria-labelledby="product-dialog-title" aria-describedby="product-dialog-description">
+    <form id="product-form">
+      <div class="dialog-header"><div><p class="eyebrow">商品オプション</p><h2 id="product-dialog-title">商品設定</h2></div><button id="product-close" class="icon-button close-button" type="button" aria-label="商品設定を閉じる">×</button></div>
+      <div class="dialog-body">
+        <p id="product-dialog-description" class="form-description">数量と手法を変更して保存します。運転モードは売買管理画面で設定します。</p>
+        <div class="current-settings"><span class="field-caption">保存済み</span><p id="product-current">—</p></div>
+        <fieldset id="product-fields" class="plain-fieldset">
+          <div class="field"><label for="product-quantity">Qty <span>片方向上限</span></label><div class="input-suffix"><input id="product-quantity" name="max_per_side" type="number" min="1" step="1" required inputmode="numeric"><span>枚</span></div><p class="field-hint">当運転が所有する建玉と未約定新規注文の上限です。</p></div>
+          <div class="window-heading"><h3>時間帯ごとの手法</h3><button id="product-window-add" class="button secondary" type="button">＋ 時間帯を追加</button></div>
+          <p class="field-hint">日本時間で指定します。米国開始の前後は夏時間へ自動追従します。枠の間は静観し、切替時は当運転の所有玉を返済します。</p>
+          <div id="product-windows" class="window-list"></div>
+        </fieldset>
+        <p id="product-rules-note" class="form-description"></p><p class="inline-note">設定変更はOFFのときだけ可能です。自動切替では旧枠の返済・注文照合が完了してから次の枠へ進みます。</p><div id="product-error" class="alert" role="alert" hidden></div>
+      </div>
+      <div class="dialog-footer"><span id="product-save-status" class="save-status">保存済み</span><div class="save-actions"><button id="product-cancel" class="button secondary" type="button">閉じる</button><button id="product-save" class="button primary" type="submit" disabled>変更を保存</button></div></div>
+    </form>
+  </dialog>
+  <div id="notification" class="screen-reader" role="status" aria-live="polite"></div>
+  <noscript><div class="noscript">管理画面の表示と操作にはJavaScriptを有効にしてください。</div></noscript>
+</body>
+</html>

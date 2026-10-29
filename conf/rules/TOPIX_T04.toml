@@ -1,0 +1,79 @@
+# t04の判断条件。変更は再起動時に適用します。
+# 設定形式の版。1のまま使用します。
+version = 1
+# このファイルが適用される手法名。変更しません。
+profile = "TOPIX_T04"
+
+[expressions]
+
+# 補完枠の気配差が許容R倍率以内かを確認。
+# 入力: risk, spread, spread_r
+"extra.quote" = "spread <= spread_r * risk"
+
+# 主担当未参加の補完枠リスク幅。ATR、過去帯幅、最小呼値幅から計算。
+# 入力: atr, band_fraction, band_width, minimum_ticks, tick
+"extra.risk" = "max(atr, max(band_fraction * band_width, minimum_ticks * tick))"
+
+# 補完の方向票。各入力は-1/0/1の確定票。票ゼロ時の補完順序はGo側で固定。
+# 入力: long_a, long_b, mean_side, short_a, short_b, slope_side, style_zero
+"extra.vote" = "style_zero ? long_a + long_b + 0.5 * (short_a + short_b) : mean_side + slope_side"
+
+# 夜間の保有後、固定突破境界が破れ相手方向も逆行したら返済。
+# 入力: break_r, direction, distance, risk
+"night.boundary_exit" = "distance < -break_r * risk && direction < 0"
+
+# 入口時にも過去帯の二市場方向が候補方向へ継続しているかを確認。
+# 入力: own, peer
+"night.direction_still" = "own > 0 && peer > 0"
+
+# 夜間の突破準備に必要な方向効率。
+# 入力: efficiency, threshold
+"night.efficiency" = "efficiency >= threshold"
+
+# 過去の高値・安値突破と二市場の方向一致で候補を決める。-1/0/1以外は採用しない。
+# 入力: high, low, own, peer, price
+"night.entry_direction" = "price > high && own > 0 && peer > 0 ? 1.0 : (price < low && own < 0 && peer < 0 ? -1.0 : 0.0)"
+
+# 夜間の入口気配差・基準価格からの気配距離を固定Rで確認。
+# 入力: distance, distance_r, risk, spread, spread_r
+"night.entry_quote" = "spread <= spread_r * risk && distance <= distance_r * risk"
+
+# U06は両市場120秒変化が逆流閾値を超えた入口を取消す。
+# 入力: own, peer, threshold
+"night.opposition120" = "own < -threshold && peer < -threshold"
+
+# T04は準備時間と固定境界からの順行幅を確認。
+# 入力: advance, confirm_seconds, elapsed, progress_r, risk
+"night.progress" = "elapsed >= confirm_seconds && advance >= progress_r * risk"
+
+# U06は押し戻り極値から再反発してから新規。段階を同一行で飛ばさない。
+# 入力: bounce_r, confirm_seconds, elapsed, rebound, risk
+"night.retest_bounce" = "elapsed >= confirm_seconds && rebound >= bounce_r * risk"
+
+# U06は固定突破境界から標準0.75R順行した後に押し戻りを待つ。
+# 入力: advance, progress_r, risk
+"night.retest_progress" = "advance >= progress_r * risk"
+
+# U06は順行を確認した後、境界から標準0.25R以下へ戻るのを待つ。
+# 入力: advance, return_r, risk
+"night.retest_return" = "advance <= return_r * risk"
+
+# T04の入口直前に両市場120秒変化が支持閾値を超えることを確認。
+# 入力: own, peer, threshold
+"night.support120" = "own > threshold && peer > threshold"
+
+# 候補方向への両市場30秒変化がともに正なら支持。
+# 入力: own, peer
+"night.support30" = "own > 0 && peer > 0"
+
+# 実玉の最高利益が開始倍率×初回Rに届けば利益追尾開始。
+# 入力: arm, peak, risk
+"trail.active" = "peak >= arm * risk"
+
+# 現在利益幅が実玉の停止下限以下なら返済。
+# 入力: floor, gain
+"trail.exit" = "gain <= floor"
+
+# 実玉の利益追尾下限。元の下限より緩めることは実行側で禁止。
+# 入力: peak, risk, width
+"trail.floor" = "peak - width * risk"

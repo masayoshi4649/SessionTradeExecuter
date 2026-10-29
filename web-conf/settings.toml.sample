@@ -1,0 +1,241 @@
+# このファイルはWeb版の設定見本です。実行ファイル隣のconf/settings.tomlにコピーして使用します。
+# 画面から商品・共通設定を変更できます。画面の保存内容はconf/web-ui.tomlに記録します。
+
+# 標準設定の移行版。アプリが管理します。手法を選び直した後の再移行を防ぐため変更しません。
+settings_version = 2
+
+[rule_engine]
+# 手法別の条件ファイルがあるフォルダ。実行ファイル隣を基準にします。
+# day/nightの手法IDに対応するTOMLを使用します。読込失敗時は起動しません。
+directory = "conf/rules"
+
+[startup]
+# run: Web画面 / check: 全商品の設定検査 / probe: 読取接続検査 / diagnostics: 診断ZIP出力。
+action = "run"
+
+[web]
+# 画面の待受IP。0.0.0.0で全インターフェースからの接続を受け付けます。
+# 別PCからは起動PCのIPアドレス又はホスト名で開きます。同じPC限定なら127.0.0.1。
+host = "0.0.0.0"
+# Web画面のポート番号（1〜65535）。controllerの8080とは別の番号にします。
+port = 8090
+
+[controller]
+# kabus-controllerの接続先。APIパスやAPIキーは付けません。
+base_url = "http://10.10.100.1:8080"
+
+[schedule]
+# 立会終了の何秒前に全玉の返済を要求するか。600は10分前。立会時刻はAPIから取得します。
+force_close_before_seconds = 600
+# 米国現物開始の基準（冬の日本時間）。米国夏時間は自動で1時間早め、22:30になります。
+us_open_jst = "23:30"
+
+# 全5商品を一つずつ記載します。モード・枚数・時間帯ごとの手法を画面で変更できます。
+# OFFは注文取消・照合後に停止し、保有玉は返済せず管理対象から外します。画面保存のconf/web-ui.tomlを優先適用します。
+# 判断板は日経225とTOPIXのラージを使用し、発注・約定・建玉IDは商品ごとに分離します。
+[[instruments]]
+# 発注する商品名。日経225ラージです。
+product = "NK225"
+# 商品別モード。off=停止、dryrun=仮想売買、live=実取引。画面から変更・保存できます。
+mode = "off"
+# 今回の運転が所有する買い・売りそれぞれの上限枚数。未約定新規も含み、旧玉・手動玉は除きます。
+max_per_side = 2
+# 日中の標準はNK225_D164_15。旧手法も画面から選択できます。
+day = "NK225_D164_15"
+# 互換用の夜間名。新標準の前半・後半は下の時間帯枠で分離します。
+night = "NK225_U165_03"
+
+# 日経の標準は4枠です。時間帯を明示した場合は上のday/nightより優先します。
+[[instruments.windows]]
+# 同じ商品の中で重複しない時間帯ID。
+id = "Day"
+# 日中。立会時刻はcontrollerから取得します。
+session = "Day"
+# この場の立会開始。
+start = "SESSION_START"
+# この場の立会終了。既存の終了前返済設定も引き続き適用します。
+end = "SESSION_END"
+# 日中はD164_15。支持に応じた数量、失速時の初回待機、残玉保護と追撃確認を使います。
+method = "NK225_D164_15"
+
+[[instruments.windows]]
+# 夜間の米国前を担当する時間帯ID。
+id = "NightPreUS"
+# 夜間。
+session = "Night"
+# 夜間立会開始。日本時間の固定値で市場時刻を再定義しません。
+start = "SESSION_START"
+# 米国現物開始の15分前に当運転所有分を返済し、照合完了を待ちます。夏時間へ追従します。
+end = "US_OPEN-00:15"
+# 米国前はP164_06。P05を元に少量初回・利益残玉を保護し、追撃玉の50円逆行を返済します。
+method = "NK225_P164_06"
+
+[[instruments.windows]]
+# 米国寄付き前後の静観枠です。
+id = "NightUSQuiet"
+# 夜間。
+session = "Night"
+# 米国開始15分前。
+start = "US_OPEN-00:15"
+# 米国開始15分後。
+end = "US_OPEN+00:15"
+# 空文字は新規を行わない静観。商品OFFの管理放棄とは異なります。
+method = ""
+
+[[instruments.windows]]
+# 米国後を担当する時間帯ID。
+id = "NightPostUS"
+# 夜間。
+session = "Night"
+# 米国開始15分後から新しい売買状態で準備。指標は継続し、D07固有の待機も維持します。
+start = "US_OPEN+00:15"
+# 夜間立会終了。終了前返済設定を維持します。
+end = "SESSION_END"
+# 米国後はU165_03。D07を元に反対板の価格帯と表示数量を確認し、初回を最大30秒待機します。
+method = "NK225_U165_03"
+
+[[instruments]]
+# 発注する商品名。日経225miniです。
+product = "NK225mini"
+# 商品別モード。off=停止、dryrun=仮想売買、live=実取引。画面から変更・保存できます。
+mode = "off"
+# この商品の片方向上限。支持と元担当の通知から数量を算出し、整数に切り捨てます。
+max_per_side = 10
+# 日中の手法ID。
+day = "NK225_D164_15"
+# 旧形式との互換用の夜間手法ID。下の時間帯枠を優先します。
+night = "NK225_U165_03"
+
+# 日経の標準は4枠です。時間帯を明示した場合は上のday/nightより優先します。
+[[instruments.windows]]
+# 同じ商品の中で重複しない時間帯ID。
+id = "Day"
+# 日中。立会時刻はcontrollerから取得します。
+session = "Day"
+# この場の立会開始。
+start = "SESSION_START"
+# この場の立会終了。既存の終了前返済設定も引き続き適用します。
+end = "SESSION_END"
+# 日中はD164_15。支持に応じた数量、失速時の初回待機、残玉保護と追撃確認を使います。
+method = "NK225_D164_15"
+
+[[instruments.windows]]
+# 夜間の米国前を担当する時間帯ID。
+id = "NightPreUS"
+# 夜間。
+session = "Night"
+# 夜間立会開始。日本時間の固定値で市場時刻を再定義しません。
+start = "SESSION_START"
+# 米国現物開始の15分前に当運転所有分を返済し、照合完了を待ちます。夏時間へ追従します。
+end = "US_OPEN-00:15"
+# 米国前はP164_06。P05を元に少量初回・利益残玉を保護し、追撃玉の50円逆行を返済します。
+method = "NK225_P164_06"
+
+[[instruments.windows]]
+# 米国寄付き前後の静観枠です。
+id = "NightUSQuiet"
+# 夜間。
+session = "Night"
+# 米国開始15分前。
+start = "US_OPEN-00:15"
+# 米国開始15分後。
+end = "US_OPEN+00:15"
+# 空文字は新規を行わない静観。商品OFFの管理放棄とは異なります。
+method = ""
+
+[[instruments.windows]]
+# 米国後を担当する時間帯ID。
+id = "NightPostUS"
+# 夜間。
+session = "Night"
+# 米国開始15分後から新しい売買状態で準備。指標は継続し、D07固有の待機も維持します。
+start = "US_OPEN+00:15"
+# 夜間立会終了。終了前返済設定を維持します。
+end = "SESSION_END"
+# 米国後はU165_03。D07を元に反対板の価格帯と表示数量を確認し、初回を最大30秒待機します。
+method = "NK225_U165_03"
+
+[[instruments]]
+# 発注する商品名。日経225microです。
+product = "NK225micro"
+# 商品別モード。off=停止、dryrun=仮想売買、live=実取引。画面から変更・保存できます。
+mode = "off"
+# この商品の片方向上限。ラージ・miniの上限とは別に管理します。
+max_per_side = 20
+# 日中の手法ID。
+day = "NK225_D164_15"
+# 旧形式との互換用の夜間手法ID。下の時間帯枠を優先します。
+night = "NK225_U165_03"
+
+# 日経の標準は4枠です。時間帯を明示した場合は上のday/nightより優先します。
+[[instruments.windows]]
+# 同じ商品の中で重複しない時間帯ID。
+id = "Day"
+# 日中。立会時刻はcontrollerから取得します。
+session = "Day"
+# この場の立会開始。
+start = "SESSION_START"
+# この場の立会終了。既存の終了前返済設定も引き続き適用します。
+end = "SESSION_END"
+# 日中はD164_15。支持に応じた数量、失速時の初回待機、残玉保護と追撃確認を使います。
+method = "NK225_D164_15"
+
+[[instruments.windows]]
+# 夜間の米国前を担当する時間帯ID。
+id = "NightPreUS"
+# 夜間。
+session = "Night"
+# 夜間立会開始。日本時間の固定値で市場時刻を再定義しません。
+start = "SESSION_START"
+# 米国現物開始の15分前に当運転所有分を返済し、照合完了を待ちます。夏時間へ追従します。
+end = "US_OPEN-00:15"
+# 米国前はP164_06。P05を元に少量初回・利益残玉を保護し、追撃玉の50円逆行を返済します。
+method = "NK225_P164_06"
+
+[[instruments.windows]]
+# 米国寄付き前後の静観枠です。
+id = "NightUSQuiet"
+# 夜間。
+session = "Night"
+# 米国開始15分前。
+start = "US_OPEN-00:15"
+# 米国開始15分後。
+end = "US_OPEN+00:15"
+# 空文字は新規を行わない静観。商品OFFの管理放棄とは異なります。
+method = ""
+
+[[instruments.windows]]
+# 米国後を担当する時間帯ID。
+id = "NightPostUS"
+# 夜間。
+session = "Night"
+# 米国開始15分後から新しい売買状態で準備。指標は継続し、D07固有の待機も維持します。
+start = "US_OPEN+00:15"
+# 夜間立会終了。終了前返済設定を維持します。
+end = "SESSION_END"
+# 米国後はU165_03。D07を元に反対板の価格帯と表示数量を確認し、初回を最大30秒待機します。
+method = "NK225_U165_03"
+
+[[instruments]]
+# 発注する商品名。TOPIXラージです。
+product = "TOPIX"
+# 商品別モード。off=停止、dryrun=仮想売買、live=実取引。画面から変更・保存できます。
+mode = "off"
+# この商品の片方向上限。返済した枚数は同じ運転内の新規に再利用できます。
+max_per_side = 2
+# 日中の手法名。TOPIX系はTOPIX_T06です。
+day = "TOPIX_T06"
+# 夜間の手法名。TOPIX系はTOPIX_T04です。
+night = "TOPIX_T04"
+
+[[instruments]]
+# 発注する商品名。TOPIXminiです。
+product = "TOPIXmini"
+# 商品別モード。off=停止、dryrun=仮想売買、live=実取引。画面から変更・保存できます。
+mode = "off"
+# この商品の片方向上限。
+max_per_side = 10
+# 日中の手法ID。
+day = "TOPIX_T06"
+# 夜間の手法ID。
+night = "TOPIX_T04"

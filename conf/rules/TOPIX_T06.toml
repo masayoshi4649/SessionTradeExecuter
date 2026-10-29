@@ -1,0 +1,91 @@
+# t06_topixの判断条件。変更は再起動時に適用します。
+# 設定形式の版。1のまま使用します。
+version = 1
+# このファイルが適用される手法名。変更しません。
+profile = "TOPIX_T06"
+
+[expressions]
+
+# 実約定後の固定アンカーから両市場が逆行したかを確認。
+# 入力: own, peer, threshold
+"day.adverse" = "own <= -threshold && peer <= -threshold"
+
+# 二市場の逆行が手法指定秒数以上持続したら返済。日経60秒、TOPIX120秒が標準。
+# 入力: elapsed, threshold
+"day.adverse_confirm" = "elapsed >= threshold"
+
+# 日中のE01方向と独立確認方向が一致した場合に入口準備へ進む。
+# 入力: direction, gate
+"day.direction_agrees" = "direction == gate"
+
+# 日中の新規気配差と、直近価格から発注側気配への距離をATRで確認。
+# 入力: atr, distance_atr, signed_distance, spread, spread_atr
+"day.entry_quote" = "spread <= spread_atr * atr && signed_distance <= distance_atr * atr"
+
+# 新規方向への二市場30秒変化が弱い逆票の許容値以上かを確認。
+# 入力: own30, peer30, threshold
+"day.entry_support" = "own30 >= threshold && peer30 >= threshold"
+
+# 実現値幅と残玉評価値幅の合計が初回全枚数の損失予算以下なら返済。
+# 入力: equity, fraction, initial_quantity, risk
+"day.loss" = "equity <= -initial_quantity * risk * fraction"
+
+# 現在ATR÷初回ATRで損失予算を縮小。0〜1以内に制限し、以前より広げない。
+# 入力: minimum, ratio
+"day.risk_fraction" = "max(minimum, min(1, ratio))"
+
+# 補完枠の気配差が許容R倍率以内かを確認。
+# 入力: risk, spread, spread_r
+"extra.quote" = "spread <= spread_r * risk"
+
+# 主担当未参加の補完枠リスク幅。ATR、過去帯幅、最小呼値幅から計算。
+# 入力: atr, band_fraction, band_width, minimum_ticks, tick
+"extra.risk" = "max(atr, max(band_fraction * band_width, minimum_ticks * tick))"
+
+# 補完の方向票。各入力は-1/0/1の確定票。票ゼロ時の補完順序はGo側で固定。
+# 入力: long_a, long_b, mean_side, short_a, short_b, slope_side, style_zero
+"extra.vote" = "style_zero ? long_a + long_b + 0.5 * (short_a + short_b) : mean_side + slope_side"
+
+# 日中E01の全返済後の再準備待機。未返済・未約定の管理とは分離。
+# 入力: elapsed, threshold
+"shadow.cooldown" = "elapsed >= threshold"
+
+# 日中の追跡新規。追跡極値から反発を待つ距離。標準0.25ATR。
+# 入力: atr, entry_atr
+"shadow.entry_distance" = "entry_atr * atr"
+
+# 日中E01の最大保有時間。場末強制返済はこの式にかかわらず優先。
+# 入力: elapsed, threshold
+"shadow.hold_expired" = "elapsed >= threshold"
+
+# 日中E01の組全体損失予算。通常影1ATR、早期出口影0.75ATRが標準。
+# 入力: normal_risk, tight, tight_risk
+"shadow.risk_factor" = "tight ? tight_risk : normal_risk"
+
+# 日中E01の半数利確幅。初回ATRを固定し、標準2ATRに達した時の次観測で執行。
+# 入力: atr, split_atr
+"shadow.split_distance" = "split_atr * atr"
+
+# 日中E01の最高順行幅が標準1.5ATRに到達したら追尾開始。
+# 入力: arm_atr, atr, gain
+"shadow.trail_active" = "gain >= arm_atr * atr"
+
+# 日中E01の追尾ATR倍率。標準3、早期出口影で3ATR順行後は0.75。
+# 入力: atr, gain, normal_width, tight, tight_arm, tight_width
+"shadow.trail_width" = "tight && gain >= tight_arm * atr ? tight_width : normal_width"
+
+# 日中E01の開始後準備時間。標準1200秒。
+# 入力: elapsed, threshold
+"shadow.warmup" = "elapsed >= threshold"
+
+# 実玉の最高利益が開始倍率×初回Rに届けば利益追尾開始。
+# 入力: arm, peak, risk
+"trail.active" = "peak >= arm * risk"
+
+# 現在利益幅が実玉の停止下限以下なら返済。
+# 入力: floor, gain
+"trail.exit" = "gain <= floor"
+
+# 実玉の利益追尾下限。元の下限より緩めることは実行側で禁止。
+# 入力: peak, risk, width
+"trail.floor" = "peak - width * risk"

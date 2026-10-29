@@ -31,3 +31,13 @@ go.work.sum
 # Editor/IDE
 # .idea/
 # .vscode/
+
+# 配布物・運用状態・利用者設定・一時資料は管理対象に含めない。
+/dist/
+/data/
+/log/
+/work/
+/cache/
+/session-trade-executer
+/conf/settings.toml
+/conf/web-ui.toml

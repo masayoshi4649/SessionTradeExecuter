@@ -1,0 +1,219 @@
+# NK225_S01の判断条件。適用は再起動時です。省略・未知名・型違いは起動時エラーです。
+# 設定形式の版。1のまま使用します。
+version = 1
+# 銘柄と手法名。変更しません。
+profile = "NK225_S01"
+[expressions]
+
+# 通常追撃の損失予算と気配差を確認。夜は利益保護後だけを実行側でも要求。
+# 入力: budget, exposure, risk, spread
+"addon.add_ready" = "exposure <= budget && spread <= 0.25 * risk"
+
+# 通常追撃は自銘柄の30秒が正・相手が非負で、追加段数に応じ0.5Rずつ進み、前回追加後30秒以上。
+# 入力: elapsed, gain, next_ticket, own30, peer30, risk
+"addon.add_trigger" = "own30 > 0 && peer30 >= 0 && gain >= 0.5 * next_ticket * risk && elapsed >= 30"
+
+# 保有方向に対して両市場の30秒変化が-0.1R以下、120秒変化も負なら悪化監視。
+# 入力: own120, own30, peer120, peer30
+"addon.adverse" = "own30 <= -0.1 && peer30 <= -0.1 && own120 < 0 && peer120 < 0"
+
+# 二市場の逆行が連続15秒以上続いたか。データ中断で連続時計を初期化。
+# 入力: elapsed
+"addon.adverse_confirm" = "elapsed >= 15"
+
+# 全返済後の再準備秒数。夜の利益返済60秒、連敗2回以上900秒、それ以外120秒。
+# 入力: losses, night, profitable
+"addon.cooldown" = "night && profitable ? 60.0 : (losses >= 2 ? 900.0 : 120.0)"
+
+# 突破境界から0.5R以上順行したら押し戻りを待つ。
+# 入力: distance, risk
+"addon.entry.breakout_advanced" = "distance >= 0.5 * risk"
+
+# 突破境界から0.5Rを超えて逆行したら突破型準備を解除。
+# 入力: distance, risk
+"addon.entry.breakout_failed" = "distance < -0.5 * risk"
+
+# 突破境界から0.25R以下へ戻ったら再反発の確認へ移る。
+# 入力: distance, risk
+"addon.entry.breakout_retested" = "distance <= 0.25 * risk"
+
+# 突破型の方向候補。方向効率0.25以上かつ40分高値を0.05R超えて上抜けなら買い、安値を下抜けなら売り。
+# 入力: efficiency, high, low, mid, risk
+"addon.entry.breakout_side" = "efficiency >= 0.25 ? (mid > high + 0.05 * risk ? 1.0 : (mid < low - 0.05 * risk ? -1.0 : 0.0)) : 0.0"
+
+# 通常入口の価格条件と二市場支持が30秒連続してから初回注文。
+# 入力: elapsed
+"addon.entry.confirmed" = "elapsed >= 30"
+
+# 通常入口の準備が20分を超えた、又は選択型が変わった場合に準備を破棄。
+# 入力: changed, elapsed
+"addon.entry.expired" = "elapsed > 1200 || changed"
+
+# 往復型の二回目極値が最初の極値より2ティック以上有利でなければ第一段階へ戻す。
+# 入力: distance, tick
+"addon.entry.higher_low_failed" = "distance < 2 * tick"
+
+# 40分の方向効率が0.35以上なら突破型1、0.2以下なら往復型4、それ以外は準備しない-1。
+# 入力: efficiency
+"addon.entry.mode" = "efficiency >= 0.35 ? 1.0 : (efficiency <= 0.2 ? 4.0 : -1.0)"
+
+# 往復型は境界から0.75Rを超えて逆行したら準備を解除。
+# 入力: distance, risk
+"addon.entry.range_failed" = "distance < -0.75 * risk"
+
+# 往復型の第一反発後、頂点から0.125Rの押し戻りを確認。
+# 入力: distance, risk
+"addon.entry.range_pullback" = "distance >= 0.125 * risk"
+
+# 往復型の二回目極値から0.125R反発し、最初の境界の候補方向側なら入口候補。
+# 入力: boundary_distance, rebound, risk
+"addon.entry.range_rebound" = "rebound >= 0.125 * risk && boundary_distance >= 0"
+
+# 往復型の方向候補。方向効率0.3以下かつ40分安値の0.1R以内で買い、高値の0.1R以内で売り。
+# 入力: efficiency, high, low, mid, risk
+"addon.entry.range_side" = "efficiency <= 0.3 ? (mid <= low + 0.1 * risk ? 1.0 : (mid >= high - 0.1 * risk ? -1.0 : 0.0)) : 0.0"
+
+# 入口の極値から0.25R反発したことを確認。
+# 入力: distance, risk
+"addon.entry.rebound" = "distance >= 0.25 * risk"
+
+# 通常入口は気配差が0.25Rを超えたら準備を解除。
+# 入力: risk, spread
+"addon.entry.spread_reject" = "spread > 0.25 * risk"
+
+# 往復型は両市場の120秒変化も候補方向へ逆行していないことを要求。
+# 入力: own120, peer120
+"addon.entry.support120" = "own120 >= 0 && peer120 >= 0"
+
+# 通常入口の30秒方向支持。自銘柄と相手市場が候補方向に逆行していないこと。
+# 入力: own30, peer30
+"addon.entry.support30" = "own30 >= 0 && peer30 >= 0"
+
+# 現在順行幅が停止幅以下なら返済。初期損切りと利益追尾を同じ停止幅で判定。
+# 入力: floor, gain
+"addon.exit_trigger" = "gain <= floor"
+
+# 初回判断時の利益単位U。ATR未取得なら元のRを使い、取得済みなら8ティック以上・元R以下でATRの1.5倍。
+# 入力: atr, atr_known, risk, tick
+"addon.exit_unit" = "atr_known ? max(8 * tick, min(risk, 1.5 * atr)) : risk"
+
+# 夜のドテン候補は自銘柄の5分・120秒・30秒・40分が新方向に正で、価格も20分平均の新方向側。
+# 入力: own120, own30, own40, own5, price_ma
+"addon.flip_direction" = "own5 > 0 && own120 > 0 && own30 > 0 && price_ma > 0 && own40 > 0"
+
+# 両市場の5分・20分・40分がすべて保有方向と逆なら全返済。
+# 入力: own20, own40, own5, peer20, peer40, peer5
+"addon.opposite" = "own5 < 0 && peer5 < 0 && own20 < 0 && peer20 < 0 && own40 < 0 && peer40 < 0"
+
+# 昼の最初の半数利確、又は回転玉1枚の利確は順行幅1Uで開始。利益がある所有玉だけを返済。
+# 入力: gain, unit
+"addon.partial_profit" = "gain >= unit"
+
+# 前回の利確価格から0.75U以上押し戻されたら、再参加の反発待ちへ移る。
+# 入力: distance, unit
+"addon.pullback" = "distance >= 0.75 * unit"
+
+# 押し戻り極値から0.25U以上反発し、前回利確価格より不利でなければ再参加候補。
+# 入力: price_change, rebound, unit
+"addon.rebound" = "rebound >= 0.25 * unit && price_change <= 0"
+
+# 夜の再参加又はドテンが15秒連続し、気配差が0.25R以内なら新規候補を確定。
+# 入力: elapsed, risk, spread
+"addon.reentry_ready" = "elapsed >= 15 && spread <= 0.25 * risk"
+
+# 昼の再参加条件が15秒連続し、元の損失予算以内かつ気配差0.25U以内なら回転玉を追加。
+# 入力: budget, elapsed, exposure, spread, unit
+"addon.rotation_ready" = "elapsed >= 15 && exposure <= budget && spread <= 0.25 * unit"
+
+# 再参加方向に自銘柄の30秒・120秒変化がともに正かを確認。
+# 入力: own120, own30
+"addon.self_support" = "own30 > 0 && own120 > 0"
+
+# 20分・40分それぞれで両市場が逆行せず、少なくとも片方が順行なら方向支持を残す。
+# 入力: own20, own40, peer20, peer40
+"addon.support" = "own20 >= 0 && peer20 >= 0 && (own20 > 0 || peer20 > 0) && own40 >= 0 && peer40 >= 0 && (own40 > 0 || peer40 > 0)"
+
+# 最高順行幅が初回固定Uへ届いたら利益追尾を開始。
+# 入力: best, unit
+"addon.trail_active" = "best >= unit"
+
+# 利益追尾の戻り許容幅。昼は1.5U、夜は0.75U。停止価格を緩める処理は実行側で禁止。
+# 入力: night, unit
+"addon.trail_width" = "(night ? 0.75 : 1.5) * unit"
+
+# 昼の入口反証が連続する必要秒数。無効板と15秒超の受信断ではGo側で連続判定をリセットします。
+"core.adverse_hold_seconds" = "15"
+
+# 昼の入口反証。120秒と20分が逆行し、現在MAが入口固定MAを0.1R以上下回る場合。売りは上下対称。
+# 入力: fixed_r, signed_120, signed_20m, signed_ma_gap
+"core.day_adverse" = "signed_120 < 0 && signed_20m < 0 && signed_ma_gap <= -0.1 * fixed_r"
+
+# 昼の新規採否。自市場120秒変化を新規方向へ符号付けしたR比が-0.25以上。
+# 入力: own_known, signed_move_r
+"core.day_gate" = "!own_known || signed_move_r >= -0.25"
+
+# 初回の固定R。tickはラージ呼値、atrは直前までのATR。最小呼値未満にはしません。
+# 入力: atr, atr_known, tick
+"core.fixed_r" = "atr_known ? max(8 * tick, atr) : 8 * tick"
+
+# 夜の新規採否。両市場の120秒変化がともに新規方向へ逆流なら見送ります。
+# 入力: own_known, own_signed_move, peer_known, peer_signed_move
+"core.night_gate" = "!(own_known && peer_known && own_signed_move < 0 && peer_signed_move < 0)"
+
+# 夜の他市場情報の経過秒。未来時刻はGo側でも拒否します。
+# 入力: age_seconds
+"core.peer_fresh" = "age_seconds >= 0 && age_seconds <= 15"
+
+# P01の返済判定。部分利確後に最高利益があり、現在利益幅が下限以下になれば残玉を返済。
+# 入力: best, floor, gain
+"partial.exit" = "best > 0 && gain <= floor"
+
+# P01の利益下限。実部分利確後に残玉固定平均建値から測った最高利益幅の半分。
+# 入力: best
+"partial.floor" = "0.5 * best"
+
+# P01の開始条件。昼基本枠の実部分返済利益と返済理由から判定。約定前や全返済では開始しません。
+# 入力: closed_gain, reason
+"partial.start" = "closed_gain > 0 && (reason == 7 || reason == 30 || reason == 1435)"
+
+# 他玉の実返済後に固定する残玉の損失予算。費用前の実現収支を用います。
+# 入力: cash_yen
+"residual.budget" = "max(0, cash_yen)"
+
+# 残玉化を検討する元の全返済理由。最古の利益玉1枚を候補とします。
+# 入力: reason
+"residual.eligible_reason" = "reason == 2 || reason == 70 || reason == 1437"
+
+# 残り1枚の返済。実現利益予算による下限と最高利益からの追尾下限を比較します。
+# 入力: budget_floor, gain, trail_floor
+"residual.exit" = "gain <= max(budget_floor, trail_floor)"
+
+# 残玉以外の返済見込益、またはその実約定後利益が正かを判定。
+# 入力: cash_yen
+"residual.profitable_budget" = "cash_yen > 0"
+
+# 残玉候補1枚の費用前利益が正かを判定。D07の判断用費用は0円です。
+# 入力: gain_yen
+"residual.profitable_lot" = "gain_yen > 0"
+
+# 残玉を維持しない米国寄付後の秒数。
+"residual.quiet_after_seconds" = "900"
+
+# 残玉を維持しない米国寄付前の秒数。米国寄付時刻はセッション設定から受け取ります。
+"residual.quiet_before_seconds" = "900"
+
+# 残り1枚の追尾幅。夜基本枠R05だけ3Rを16ラージ呼値（日経160pt）で上限化。
+# 入力: fixed_r, is_core, is_night, tick
+"residual.width" = "is_night && is_core ? min(3 * fixed_r, 16 * tick) : 3 * fixed_r"
+
+# 独立して動く元D07の波担当が別の親を保有・予約中なら新しい波親を採用しません。一度拒否した親は後追いしません
+# 入力: baseline_occupied, same_campaign
+"s01.entry_allowed" = "!baseline_occupied || same_campaign"
+
+# 波担当の親総時価利益が初回枚数×固定R×0.5に到達すると保護を開始。部分返済・追加で初期化しません
+# 入力: initial_quantity, parent_value, point_value, risk
+"s01.guard_active" = "parent_value >= 0.5 * risk * initial_quantity * point_value"
+
+# 保護開始後の親総時価利益の最高値の50%を返済判断の床にします。次の実約定で同額を保証する式ではありません
+# 入力: best_value
+"s01.guard_floor" = "best_value * 0.5"

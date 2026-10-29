@@ -1,0 +1,232 @@
+# tg04の判断条件。変更は再起動時に適用します。
+# 設定形式の版。1のまま使用します。
+version = 1
+# このファイルが適用される手法名。変更しません。
+profile = "NK225_TG04"
+
+[expressions]
+
+# 通常追撃の損失予算と気配差を確認。夜は利益保護後だけを実行側でも要求。
+# 入力: budget, exposure, risk, spread
+"research.active.add_ready" = "exposure <= budget && spread <= 0.25 * risk"
+
+# 通常追撃は自銘柄の30秒が正・相手が非負で、追加段数に応じ0.5Rずつ進み、前回追加後30秒以上。
+# 入力: elapsed, gain, next_ticket, own30, peer30, risk
+"research.active.add_trigger" = "own30 > 0 && peer30 >= 0 && gain >= 0.5 * next_ticket * risk && elapsed >= 30"
+
+# 保有方向に対して両市場の30秒変化が-0.1R以下、120秒変化も負なら悪化監視。
+# 入力: own120, own30, peer120, peer30
+"research.active.adverse" = "own30 <= -0.1 && peer30 <= -0.1 && own120 < 0 && peer120 < 0"
+
+# 二市場の逆行が連続15秒以上続いたか。データ中断で連続時計を初期化。
+# 入力: elapsed
+"research.active.adverse_confirm" = "elapsed >= 15"
+
+# 全返済後は120秒準備し、連敗2回以上は900秒停止。
+# 入力: losses
+"research.active.cooldown" = "losses >= 2 ? 900.0 : 120.0"
+
+# 現在の順行幅が初期損切り又は利益追尾の停止幅以下なら全返済。
+# 入力: floor, gain
+"research.active.exit" = "gain <= floor"
+
+# 両市場の5分・20分・40分がすべて保有方向と逆なら全返済。
+# 入力: own20, own40, own5, peer20, peer40, peer5
+"research.active.opposite" = "own5 < 0 && peer5 < 0 && own20 < 0 && peer20 < 0 && own40 < 0 && peer40 < 0"
+
+# 20分・40分それぞれで両市場が逆行せず、少なくとも片方が順行なら方向支持を残す。
+# 入力: own20, own40, peer20, peer40
+"research.active.support" = "own20 >= 0 && peer20 >= 0 && (own20 > 0 || peer20 > 0) && own40 >= 0 && peer40 >= 0 && (own40 > 0 || peer40 > 0)"
+
+# 最高順行幅が1.25R以上へ届いたら利益追尾を有効にする。
+# 入力: best, risk
+"research.active.trail_active" = "best >= 1.25 * risk"
+
+# 利益追尾の戻り幅は0.75R。停止価格を不利な方向へ緩めない。
+# 入力: risk
+"research.active.trail_width" = "0.75 * risk"
+
+# 日中基本枠の固定平均破綻が15秒続いたら返済。
+"research.core.adverse_duration" = "15.0"
+
+# 日中基本枠は120秒・20分が逆行し、初回固定20分平均から0.1R以上逆側なら反証を開始。
+# 入力: ma_distance, own120, own20, risk
+"research.core.day_adverse" = "own120 < 0 && own20 < 0 && ma_distance <= -0.1 * risk"
+
+# 日中基本枠は既知の120秒変化が入口R換算で-0.25未満なら見送る。未知は既存条件どおり見送り根拠にしない。
+# 入力: own_known, signed_move_r
+"research.core.day_gate" = "!own_known || signed_move_r >= -0.25"
+
+# TG04/PG04基本枠の初回Rは8ティックとATRの大きい方。
+# 入力: atr, tick
+"research.core.fixed_r" = "max(8 * tick, atr)"
+
+# 夜間基本枠は新鮮な二市場の120秒変化が両方逆方向の場合に見送る。
+# 入力: own_known, own_move, peer_known, peer_move
+"research.core.night_gate" = "!(own_known && peer_known && own_move < 0 && peer_move < 0)"
+
+# 夜間入口判断に使う相手市場は観測後15秒以内。未来時刻は実行側で拒否。
+# 入力: age
+"research.core.peer_fresh" = "age <= 15"
+
+# 突破境界から0.5R以上順行したら押し戻りを待つ。
+# 入力: distance, risk
+"research.entry.breakout_advanced" = "distance >= 0.5 * risk"
+
+# 突破境界から0.5Rを超えて逆行したら突破型準備を解除。
+# 入力: distance, risk
+"research.entry.breakout_failed" = "distance < -0.5 * risk"
+
+# 突破境界から0.25R以下へ戻ったら再反発の確認へ移る。
+# 入力: distance, risk
+"research.entry.breakout_retested" = "distance <= 0.25 * risk"
+
+# 突破型の方向候補。方向効率0.25以上かつ40分高値を0.05R超えて上抜けなら買い、安値を下抜けなら売り。
+# 入力: efficiency, high, low, mid, risk
+"research.entry.breakout_side" = "efficiency >= 0.25 ? (mid > high + 0.05 * risk ? 1.0 : (mid < low - 0.05 * risk ? -1.0 : 0.0)) : 0.0"
+
+# 通常入口の価格条件と二市場支持が30秒連続してから初回注文。
+# 入力: elapsed
+"research.entry.confirmed" = "elapsed >= 30"
+
+# 通常入口の準備が20分を超えた、又は選択型が変わった場合に準備を破棄。
+# 入力: changed, elapsed
+"research.entry.expired" = "elapsed > 1200 || changed"
+
+# 往復型の二回目極値が最初の極値より2ティック以上有利でなければ第一段階へ戻す。
+# 入力: distance, tick
+"research.entry.higher_low_failed" = "distance < 2 * tick"
+
+# 40分の方向効率が0.35以上なら突破型1、0.2以下なら往復型4、それ以外は準備しない-1。
+# 入力: efficiency
+"research.entry.mode" = "efficiency >= 0.35 ? 1.0 : (efficiency <= 0.2 ? 4.0 : -1.0)"
+
+# 往復型は境界から0.75Rを超えて逆行したら準備を解除。
+# 入力: distance, risk
+"research.entry.range_failed" = "distance < -0.75 * risk"
+
+# 安全確認を加えない独立夜間枠は、極値から0.25R反発し境界内側へ戻ることを確認。
+# 入力: boundary_distance, rebound, risk
+"research.entry.range_initial" = "rebound >= 0.25 * risk && boundary_distance >= 0"
+
+# 往復型の第一反発後、頂点から0.125Rの押し戻りを確認。
+# 入力: distance, risk
+"research.entry.range_pullback" = "distance >= 0.125 * risk"
+
+# 往復型の二回目極値から0.125R反発し、最初の境界の候補方向側なら入口候補。
+# 入力: boundary_distance, rebound, risk
+"research.entry.range_rebound" = "rebound >= 0.125 * risk && boundary_distance >= 0"
+
+# 往復型の方向候補。方向効率0.3以下かつ40分安値の0.1R以内で買い、高値の0.1R以内で売り。
+# 入力: efficiency, high, low, mid, risk
+"research.entry.range_side" = "efficiency <= 0.3 ? (mid <= low + 0.1 * risk ? 1.0 : (mid >= high - 0.1 * risk ? -1.0 : 0.0)) : 0.0"
+
+# 入口の極値から0.25R反発したことを確認。
+# 入力: distance, risk
+"research.entry.rebound" = "distance >= 0.25 * risk"
+
+# 通常入口は気配差が0.25Rを超えたら準備を解除。
+# 入力: risk, spread
+"research.entry.spread_reject" = "spread > 0.25 * risk"
+
+# 往復型は両市場の120秒変化も候補方向へ逆行していないことを要求。
+# 入力: own120, peer120
+"research.entry.support120" = "own120 >= 0 && peer120 >= 0"
+
+# 通常入口の30秒方向支持。自銘柄と相手市場が候補方向に逆行していないこと。
+# 入力: own30, peer30
+"research.entry.support30" = "own30 >= 0 && peer30 >= 0"
+
+# 停止距離は正で固定帯幅75%以内、帯中心までの余地は4ティック又は気配差2倍以上。
+# 入力: band_width, distance, reward, spread, tick
+"research.episode.acceptable" = "distance > 0 && distance <= 0.75 * band_width && reward >= max(4 * tick, 2 * spread)"
+
+# 追撃後の停止損失を初期予算内に制限し、気配差は固定帯幅の10%以内。
+# 入力: band_width, budget, exposure, spread
+"research.episode.add_ready" = "exposure <= budget && spread <= 0.1 * band_width"
+
+# 帯外失敗担当の追撃は費用を守る停止を確保し、60秒以上経過し、前回追撃より0.5R進んだとき。
+# 入力: elapsed, floor, gain, last_gain, risk, round_trip
+"research.episode.add_trigger" = "floor >= round_trip && elapsed >= 60 && gain >= last_gain + 0.5 * risk"
+
+# 帯内回復と利益余地の条件が15秒連続してから初回注文する。
+# 入力: elapsed
+"research.episode.confirmed" = "elapsed >= 15"
+
+# 日中の帯外失敗担当は停止価格へ戻ったら新しい玉から全返済。
+# 入力: floor, gain
+"research.episode.exit" = "gain <= floor"
+
+# 日中別入口の準備が20分超、又は帯の資格を失ったら準備を破棄。
+# 入力: elapsed, qualified
+"research.episode.expired" = "elapsed > 1200 || !qualified"
+
+# 日中の帯外失敗担当の初期リスク幅は8ティックと停止距離の大きい方。
+# 入力: distance, tick
+"research.episode.fixed_r" = "max(8 * tick, distance)"
+
+# 固定帯中心へ到達し往復費用と1ティックを超える含み益なら半数利確。
+# 入力: center_distance, gain, round_trip, tick
+"research.episode.partial" = "center_distance >= 0 && gain > round_trip + tick"
+
+# 半分の利確が約定したら停止を往復費用と1ティックの利益位置以上へ上げる。
+# 入力: round_trip, tick
+"research.episode.partial_floor" = "round_trip + tick"
+
+# 20分帯幅が16ティック以上あり、気配差が帯幅の10%以内なら日中別入口を準備。
+# 入力: band_width, spread, tick
+"research.episode.qualified" = "band_width >= 16 * tick && spread <= 0.1 * band_width"
+
+# 帯の境界より内側へ2ティック回復したかを確認。
+# 入力: distance, tick
+"research.episode.recovered" = "distance >= 2 * tick"
+
+# 20分帯の下側を2ティック抜けたら買い回復候補、上側を抜けたら売り回復候補。
+# 入力: high, low, mid, tick
+"research.episode.side" = "mid <= low - 2 * tick ? 1.0 : (mid >= high + 2 * tick ? -1.0 : 0.0)"
+
+# 最初の極値から2ティック又は固定帯幅の10%だけ外側を初期停止位置にする。
+# 入力: band_width, tick
+"research.episode.stop_offset" = "max(2 * tick, 0.1 * band_width)"
+
+# 日中の帯外失敗担当は最高順行幅1Rから追尾する。
+# 入力: best, risk
+"research.episode.trail_active" = "best >= risk"
+
+# 日中の帯外失敗担当の追尾幅は8ティックと固定20分帯幅の半分の大きい方。
+# 入力: band_width, tick
+"research.episode.trail_width" = "max(8 * tick, 0.5 * band_width)"
+
+# 同方向の再参加は、新たに公開された帯端又は価格極値が2ティック以上更新された後に許す。
+# 入力: edge_change, extreme_change, new_public, tick
+"research.episode.unlock" = "(new_public && edge_change >= 2 * tick) || extreme_change >= 2 * tick"
+
+# 他の玉が返済約定した後の実現黒字を、残り1枚の損失予算にする。
+# 入力: cash_yen
+"research.residual.budget" = "max(0, cash_yen)"
+
+# 元の利益追尾による全返済通知だけを残り1枚の延長候補にする。
+# 入力: reason
+"research.residual.eligible_reason" = "reason == 2 || reason == 70 || reason == 1437"
+
+# 残り1枚が利益予算の停止幅又は追尾幅へ戻ったら返済する。
+# 入力: budget_floor, gain, trail_floor
+"research.residual.exit" = "gain <= max(budget_floor, trail_floor)"
+
+# 残す1枚以外の実現・見込利益が費用後で正のときだけ延長する。
+# 入力: cash_yen
+"research.residual.profitable_budget" = "cash_yen > 0"
+
+# 残す1枚は現在の返済手数料を引いても利益がある玉に限る。
+# 入力: close_fee, gain_yen
+"research.residual.profitable_lot" = "gain_yen > close_fee"
+
+# 残玉担当は米国市場開始の900秒後まで静観。
+"research.residual.quiet_after" = "900.0"
+
+# 残玉担当は米国市場開始の900秒前から静観。
+"research.residual.quiet_before" = "900.0"
+
+# TG04/PG04の残り1枚は初回固定Rの3倍で利益追尾。D07夜の幅上限は適用しない。
+# 入力: risk
+"research.residual.width" = "3 * risk"
